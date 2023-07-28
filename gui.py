@@ -2,33 +2,50 @@ import tkinter as tk
 from tkinter import scrolledtext, END, messagebox
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from scapy.all import sniff
 import threading
 import queue
+import socket
 
-from scapy.layers.dns import DNS
 from scapy.layers.inet import IP
 from scapy.layers.l2 import Ether
+from scapy.sendrecv import sniff
 
 # Queue to store captured packets
 packet_queue = queue.Queue()
+computer_name_queue = queue.Queue()
+
+def get_computer_name(ip):
+    try:
+        computer_name = socket.gethostbyaddr(ip)[0]
+        return computer_name
+    except socket.herror:
+        return None
 
 def process_packet(packet):
-    # Extract IP, MAC, and hostname information from the packet
+    # Extract IP, MAC, and computer name information from the packet
     ip = None
     mac = None
-    hostname = None
 
     if 'IP' in packet:
         ip = packet[IP].src
     if 'Ether' in packet:
         mac = packet[Ether].src
-    if 'QUESTION_NAME' in packet:
-        hostname = packet[DNS].qd.qname.decode()
 
     # Format packet information for display in the text box
-    packet_info = f"IP: {ip}, MAC: {mac}, Hostname: {hostname}\n"
-    return packet_info
+    packet_info = f"IP: {ip}, MAC: {mac}, Computer Name: Retrieving...\n"
+    return packet_info, ip
+
+def dns_lookup_thread():
+    while True:
+        packet_info, ip = computer_name_queue.get()
+        computer_name = get_computer_name(ip)
+        if computer_name:
+            packet_info = packet_info.replace("Retrieving...", computer_name)
+        else:
+            packet_info = packet_info.replace("Retrieving...", "Unknown")
+        text_box.config(state=tk.NORMAL)  # Enable text box for editing
+        text_box.insert(tk.END, packet_info)  # Insert packet info at the end of the text box
+        text_box.config(state=tk.DISABLED)  # Disable text box to prevent editing
 
 def packet_capture_thread(completion_event, duration):
     # Capture packets for the specified duration (in seconds)
@@ -58,6 +75,11 @@ def visualize_traffic():
     capture_thread = threading.Thread(target=packet_capture_thread, args=(completion_event, duration))
     capture_thread.start()
 
+    # Create and start the DNS lookup thread
+    dns_thread = threading.Thread(target=dns_lookup_thread)
+    dns_thread.daemon = True
+    dns_thread.start()
+
     # Start updating the visualization
     update_visualization(completion_event)
 
@@ -67,13 +89,19 @@ def update_visualization(completion_event):
         root.after(1, update_visualization, completion_event)
         return
 
-    # Process the captured packets for visualization and display in the text box
+    # Process the captured packets for visualization and display in the text boxes
     traffic_data = []
     captured_packets = []
+    raw_packet_info = ""
     while not packet_queue.empty():
         packet = packet_queue.get()
         captured_packets.append(packet)
         traffic_data.append(len(packet))
+
+        # Process the packet and accumulate packet information
+        packet_info, ip = process_packet(packet)
+        computer_name_queue.put((packet_info, ip))
+        raw_packet_info += packet.show(dump=True) + "\n"
 
     # Create or update the bar chart
     global fig, ax, canvas  # Declare fig, ax, and canvas as global variables
@@ -91,17 +119,18 @@ def update_visualization(completion_event):
     # Update the chart in the GUI
     canvas.draw()
 
-    # Display the captured packets in the first text box (MAC, IP, and hostname)
-    text_box.delete(1.0, END)
-    for packet in captured_packets:
-        packet_info = process_packet(packet)
-        text_box.insert(tk.END, packet_info)
+    # Display the captured packets in the first text box (MAC, IP, and computer name)
+    text_box.config(state=tk.NORMAL)  # Enable text box for editing
+    text_box.delete(1.0, END)  # Clear previous content
+    for packet_info, _ in computer_name_queue.queue:
+        text_box.insert(tk.END, packet_info)  # Insert packet info at the end of the text box
+    text_box.config(state=tk.DISABLED)  # Disable text box to prevent editing
 
     # Display the captured packets in the second text box (raw packet data)
-    raw_text_box.delete(1.0, END)
-    for packet in captured_packets:
-        raw_packet_info = packet.show(dump=True)
-        raw_text_box.insert(tk.END, raw_packet_info)
+    raw_text_box.config(state=tk.NORMAL)  # Enable text box for editing
+    raw_text_box.delete(1.0, END)  # Clear previous content
+    raw_text_box.insert(tk.END, raw_packet_info)  # Insert raw packet info at the end of the text box
+    raw_text_box.config(state=tk.DISABLED)  # Disable text box to prevent editing
 
 # Create the main GUI window
 root = tk.Tk()
@@ -121,7 +150,7 @@ duration_entry.pack(pady=5)
 traffic_button = tk.Button(frame, text="Visualize Real Traffic", command=visualize_traffic)
 traffic_button.pack(pady=5)
 
-# Create a larger text box for displaying packet information (MAC, IP, and hostname)
+# Create a larger text box for displaying packet information (MAC, IP, and computer name)
 text_box = scrolledtext.ScrolledText(frame, wrap=tk.WORD, width=100, height=25)  # Decrease the height to 15
 text_box.pack(pady=10, side=tk.LEFT)  # Place the text box on the left side
 
