@@ -1,17 +1,34 @@
 import tkinter as tk
-from tkinter import scrolledtext, END
+from tkinter import scrolledtext, END, messagebox
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from scapy.all import sniff
 import threading
 import queue
 
+from scapy.layers.dns import DNS
+from scapy.layers.inet import IP
+from scapy.layers.l2 import Ether
+
 # Queue to store captured packets
 packet_queue = queue.Queue()
 
 def process_packet(packet):
-    # Customize this function to format packet information for display in the text box
-    return f"{packet.summary()}\n"
+    # Extract IP, MAC, and hostname information from the packet
+    ip = None
+    mac = None
+    hostname = None
+
+    if 'IP' in packet:
+        ip = packet[IP].src
+    if 'Ether' in packet:
+        mac = packet[Ether].src
+    if 'QUESTION_NAME' in packet:
+        hostname = packet[DNS].qd.qname.decode()
+
+    # Format packet information for display in the text box
+    packet_info = f"IP: {ip}, MAC: {mac}, Hostname: {hostname}\n"
+    return packet_info
 
 def packet_capture_thread(completion_event, duration):
     # Capture packets for the specified duration (in seconds)
@@ -74,11 +91,17 @@ def update_visualization(completion_event):
     # Update the chart in the GUI
     canvas.draw()
 
-    # Display the captured packets in the text box
+    # Display the captured packets in the first text box (MAC, IP, and hostname)
     text_box.delete(1.0, END)
     for packet in captured_packets:
         packet_info = process_packet(packet)
         text_box.insert(tk.END, packet_info)
+
+    # Display the captured packets in the second text box (raw packet data)
+    raw_text_box.delete(1.0, END)
+    for packet in captured_packets:
+        raw_packet_info = packet.show(dump=True)
+        raw_text_box.insert(tk.END, raw_packet_info)
 
 # Create the main GUI window
 root = tk.Tk()
@@ -98,9 +121,13 @@ duration_entry.pack(pady=5)
 traffic_button = tk.Button(frame, text="Visualize Real Traffic", command=visualize_traffic)
 traffic_button.pack(pady=5)
 
-# Create a larger text box for displaying packet information
-text_box = scrolledtext.ScrolledText(frame, wrap=tk.WORD, width=60, height=25)  # Increase the height to 25
+# Create a larger text box for displaying packet information (MAC, IP, and hostname)
+text_box = scrolledtext.ScrolledText(frame, wrap=tk.WORD, width=100, height=25)  # Decrease the height to 15
 text_box.pack(pady=10, side=tk.LEFT)  # Place the text box on the left side
+
+# Create a second text box to display raw packet data
+raw_text_box = scrolledtext.ScrolledText(frame, wrap=tk.WORD, width=100, height=25)  # Decrease the height to 10
+raw_text_box.pack(pady=10, side=tk.LEFT)  # Place the text box on the left side
 
 # Start the GUI event loop
 root.mainloop()
