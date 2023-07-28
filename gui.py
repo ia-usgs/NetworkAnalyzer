@@ -58,18 +58,21 @@ def update_visualization(completion_event):
         captured_packets.append(packet)
         traffic_data.append(len(packet))
 
-    # Create a bar chart
-    fig, ax = plt.subplots()
+    # Create or update the bar chart
+    global fig, ax, canvas  # Declare fig, ax, and canvas as global variables
+    if 'fig' not in globals():
+        fig, ax = plt.subplots()
+        canvas = FigureCanvasTkAgg(fig, master=frame)
+        canvas.get_tk_widget().pack(side=tk.RIGHT)  # Place the chart on the right side
+    else:
+        ax.clear()
+
     ax.bar(range(len(traffic_data)), traffic_data)
     ax.set_xlabel("Packet Number")
     ax.set_ylabel("Packet Size")
 
-    # Display the chart in the GUI
-    chart_frame = tk.Frame(frame)
-    chart_frame.pack(side=tk.RIGHT, padx=10, pady=10)  # Create a separate frame for the chart and text box
-    canvas = FigureCanvasTkAgg(fig, master=chart_frame)
+    # Update the chart in the GUI
     canvas.draw()
-    canvas.get_tk_widget().pack()
 
     # Display the captured packets in the text box
     text_box.delete(1.0, END)
