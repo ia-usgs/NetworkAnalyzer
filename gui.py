@@ -13,9 +13,9 @@ def process_packet(packet):
     # Customize this function to format packet information for display in the text box
     return f"{packet.summary()}\n"
 
-def packet_capture_thread(completion_event):
-    # Capture packets for 10 seconds
-    captured_packets = sniff(timeout=10)
+def packet_capture_thread(completion_event, duration):
+    # Capture packets for the specified duration (in seconds)
+    captured_packets = sniff(timeout=duration)
     for packet in captured_packets:
         packet_queue.put(packet)
 
@@ -23,11 +23,22 @@ def packet_capture_thread(completion_event):
     completion_event.set()
 
 def visualize_traffic():
+    # Get the user input for the scan duration
+    duration_str = duration_entry.get()
+    try:
+        duration = int(duration_str)
+        if duration <= 0:
+            raise ValueError
+    except ValueError:
+        # If the user input is not a positive integer, display an error message
+        tk.messagebox.showerror("Invalid Input", "Please enter a positive integer for the scan duration.")
+        return
+
     # Create an event to signal the completion of packet capture
     completion_event = threading.Event()
 
     # Create and start the packet capture thread
-    capture_thread = threading.Thread(target=packet_capture_thread, args=(completion_event,))
+    capture_thread = threading.Thread(target=packet_capture_thread, args=(completion_event, duration))
     capture_thread.start()
 
     # Start updating the visualization
@@ -54,7 +65,9 @@ def update_visualization(completion_event):
     ax.set_ylabel("Packet Size")
 
     # Display the chart in the GUI
-    canvas = FigureCanvasTkAgg(fig, master=frame)
+    chart_frame = tk.Frame(frame)
+    chart_frame.pack(side=tk.RIGHT, padx=10, pady=10)  # Create a separate frame for the chart and text box
+    canvas = FigureCanvasTkAgg(fig, master=chart_frame)
     canvas.draw()
     canvas.get_tk_widget().pack()
 
@@ -72,13 +85,19 @@ root.title("Real Traffic Visualization and Packet Capture")
 frame = tk.Frame(root)
 frame.pack(padx=10, pady=10)
 
+# Create a field box for entering the scan duration
+duration_label = tk.Label(frame, text="Scan Duration (seconds):")
+duration_label.pack(pady=5)
+duration_entry = tk.Entry(frame)
+duration_entry.pack(pady=5)
+
 # Create a button to start traffic visualization and packet capture
 traffic_button = tk.Button(frame, text="Visualize Real Traffic", command=visualize_traffic)
 traffic_button.pack(pady=5)
 
-# Create a large text box for displaying packet information
-text_box = scrolledtext.ScrolledText(frame, wrap=tk.WORD, width=60, height=15)
-text_box.pack(pady=10)
+# Create a larger text box for displaying packet information
+text_box = scrolledtext.ScrolledText(frame, wrap=tk.WORD, width=60, height=25)  # Increase the height to 25
+text_box.pack(pady=10, side=tk.LEFT)  # Place the text box on the left side
 
 # Start the GUI event loop
 root.mainloop()
