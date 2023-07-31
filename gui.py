@@ -112,11 +112,12 @@ def get_computer_name(ip):
         return None
 
 def process_packet(packet):
-    # Extract IP, MAC, and computer name information from the packet
+    # Initialize variables with default values
     ip = None
     mac = None
     packet_size = 0
 
+    # Check for IP and MAC in the packet
     if 'IP' in packet:
         ip = packet[IP].src
     if 'Ether' in packet:
@@ -136,7 +137,7 @@ def process_packet(packet):
         dst_port = packet[UDP].dport
 
     # Format packet information for display in the text box (including ports)
-    packet_info = f"{ip:<15}  {mac:<18}  {src_port:<6}  {dst_port:<6}  Retrieving...  {packet_size:<10}\n"
+    packet_info = f"{ip or 'Unknown':<15}  {mac or 'Unknown':<18}  {src_port or 'N/A':<6}  {dst_port or 'N/A':<6}  Retrieving...  {packet_size:<10}\n"
 
     return packet_info, ip, packet_size
 
