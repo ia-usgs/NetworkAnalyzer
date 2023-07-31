@@ -1,3 +1,4 @@
+import textwrap
 import tkinter as tk
 from tkinter import scrolledtext, END, messagebox
 import matplotlib.pyplot as plt
@@ -27,43 +28,42 @@ def process_packet(packet):
     # Extract IP, MAC, and computer name information from the packet
     ip = None
     mac = None
-    computer_name = None
+    packet_size = 0
 
     if 'IP' in packet:
         ip = packet[IP].src
     if 'Ether' in packet:
         mac = packet[Ether].src
 
-    # Check if it's a DNS packet and extract the server information
-    if 'UDP' in packet and 'DNS' in packet:
-        if packet[DNS].qr == 0:  # QR = 0 means it's a query (client to server)
-            server = packet[DNSQR].qname
-            # Perform computer name lookup using the IP address
-            computer_name = get_computer_name(ip)
-            if computer_name is None:
-                computer_name = "Unknown"  # Use a default value if computer name is not found
+    # Calculate the packet size
+    packet_size = len(packet)
 
-    # Format packet information for display in the text box
-    if computer_name:
-        packet_info = f"{ip:<15}  {mac:<18}  {computer_name}\n"
-    else:
-        packet_info = f"{ip:<15}  {mac:<18}  {'Retrieving...'}\n"
+    # Format packet information for display in the text box (without the computer name)
+    packet_info = f"{ip:<15}  {mac:<18}  Retrieving...  {packet_size:<10}\n"
 
-    return packet_info, ip
+    return packet_info, ip, packet_size
 
+
+# Updated dns_lookup_thread function
 def dns_lookup_thread():
     while True:
-        packet_info, ip = computer_name_queue.get()
+        try:
+            packet_info, ip, packet_size = computer_name_queue.get()  # Unpack all three values
+            computer_name = get_computer_name(ip)
+            if computer_name:
+                packet_info = packet_info.replace("Retrieving...", computer_name)
+            else:
+                packet_info = packet_info.replace("Retrieving...", "Unknown")
+            text_box.config(state=tk.NORMAL)  # Enable text box for editing
+            text_box.insert(tk.END, packet_info)  # Insert packet info at the end of the text box
+            text_box.config(state=tk.DISABLED)  # Disable text box to prevent editing
+        except Exception as e:
+            print("Error in DNS lookup thread:", e)
 
-        computer_name = get_computer_name(ip)
-        if computer_name:
-            packet_info = packet_info.replace("Retrieving...", computer_name)
-        else:
-            packet_info = packet_info.replace("Retrieving...", "Unknown")
 
-        text_box.config(state=tk.NORMAL)  # Enable text box for editing
-        text_box.insert(tk.END, packet_info)  # Insert packet info at the end of the text box
-        text_box.config(state=tk.DISABLED)  # Disable text box to prevent editing
+
+
+
 
 def packet_capture_thread(completion_event, duration):
     # Capture packets for the specified duration (in seconds)
@@ -76,34 +76,34 @@ def packet_capture_thread(completion_event, duration):
 
 
 def visualize_traffic():
-    # Get the user input for the scan duration
-    duration_str = duration_entry.get()
     try:
+        # Get the user input for the scan duration
+        duration_str = duration_entry.get()
         duration = int(duration_str)
         if duration <= 0:
-            raise ValueError
+            raise ValueError("Scan duration must be a positive integer.")
+
+        # Create an event to signal the completion of packet capture
+        completion_event = threading.Event()
+
+        # Create and start the packet capture thread
+        capture_thread = threading.Thread(target=packet_capture_thread, args=(completion_event, duration))
+        capture_thread.start()
+
+        # Create and start the DNS lookup thread
+        dns_thread = threading.Thread(target=dns_lookup_thread)
+        dns_thread.daemon = True
+        dns_thread.start()
+
+        # Start updating the visualization
+        update_visualization(completion_event)
     except ValueError:
-        # If the user input is not a positive integer, display an error message
         tk.messagebox.showerror("Invalid Input", "Please enter a positive integer for the scan duration.")
-        return
-
-    # Create an event to signal the completion of packet capture
-    completion_event = threading.Event()
-
-    # Create and start the packet capture thread
-    capture_thread = threading.Thread(target=packet_capture_thread, args=(completion_event, duration))
-    capture_thread.start()
-
-    # Create and start the DNS lookup thread
-    dns_thread = threading.Thread(target=dns_lookup_thread)
-    dns_thread.daemon = True
-    dns_thread.start()
-
-    # Start updating the visualization
-    update_visualization(completion_event)
-
-
+    except Exception as e:
+        tk.messagebox.showerror("Error", str(e))
 def update_visualization(completion_event):
+    global canvas
+
     if not completion_event.wait(timeout=0.1):
         # Packet capture is still ongoing, schedule the function to run again
         root.after(1, update_visualization, completion_event)
@@ -117,10 +117,13 @@ def update_visualization(completion_event):
 
     while not packet_queue.empty():
         packet = packet_queue.get()
+        if packet is None:
+            break  # Stop processing if the packet is None
+
         captured_packets.append(packet)
 
         # Process the packet and accumulate packet information
-        packet_info, ip = process_packet(packet)
+        packet_info, ip, packet_size = process_packet(packet)
         raw_packet_info += packet.show(dump=True) + "\n"
 
         # Accumulate packet size for each IP address
@@ -131,7 +134,7 @@ def update_visualization(completion_event):
                 ip_packet_sizes[ip] += len(packet)
 
         # Add packet_info to the computer_name_queue
-        computer_name_queue.put((packet_info, ip))
+        computer_name_queue.put((packet_info, ip, packet_size))
 
     # Create or update the bar chart
     global fig, ax, canvas  # Declare fig, ax, and canvas as global variables
@@ -163,18 +166,58 @@ def update_visualization(completion_event):
     # Initially hide the graph canvas
     canvas.get_tk_widget().pack_forget()
 
-    # Display the captured packets in the first text box (MAC, IP, and computer name)
+    # Display the captured packets in the first text box (MAC, IP, packet size, and computer name)
     text_box.config(state=tk.NORMAL)  # Enable text box for editing
     text_box.delete(1.0, END)  # Clear previous content
-    for packet_info, _ in computer_name_queue.queue:
-        text_box.insert(tk.END, packet_info)  # Insert packet info at the end of the text box
+
+    for packet_info, ip, packet_size in computer_name_queue.queue:
+        # Format the packet information with fixed-width columns
+        ip_formatted = f"{ip:<15}"
+        mac_formatted = f"{packet_info.strip().split('  ', 2)[1]:<18}"
+        packet_size_formatted = f"{packet_size:>10}"  # Packet size column
+        computer_name = packet_info.strip().split("  ", 2)[2]
+
+        # Split the computer name into multiple lines and join them with newlines
+        computer_name_lines = textwrap.fill(computer_name, width=30)
+
+        # Concatenate the formatted values and computer name to create a row
+        row = f"{ip_formatted}{mac_formatted}{packet_size_formatted}  {computer_name_lines}\n"  # Packet size separate column
+
+        text_box.insert(tk.END, row)  # Insert row into the text box
+
     text_box.config(state=tk.DISABLED)  # Disable text box to prevent editing
 
     # Display the captured packets in the second text box (raw packet data)
     raw_text_box.config(state=tk.NORMAL)  # Enable text box for editing
     raw_text_box.delete(1.0, END)  # Clear previous content
+
     raw_text_box.insert(tk.END, raw_packet_info)  # Insert raw packet info at the end of the text box
+
     raw_text_box.config(state=tk.DISABLED)  # Disable text box to prevent editing
+
+    while True:
+        try:
+            packet = packet_queue.get_nowait()
+            if packet is None:
+                break  # Stop processing if the packet is None
+
+            # Process the packet and accumulate packet information
+            packet_info, ip, packet_size = process_packet(packet)
+            raw_packet_info += packet.show(dump=True) + "\n"
+
+            # Accumulate packet size for each IP address
+            if ip:
+                if ip not in ip_packet_sizes:
+                    ip_packet_sizes[ip] = len(packet)
+                else:
+                    ip_packet_sizes[ip] += len(packet)
+
+            # Add packet_info to the computer_name_queue
+            computer_name_queue.put((packet_info, ip, packet_size))
+        except queue.Empty:
+            break  # Queue is empty, stop processing
+        except Exception as e:
+            print("Error in packet processing:", e)
 
 def show_graph():
     canvas.get_tk_widget().pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)  # Pack the canvas to fill the frame
@@ -227,4 +270,5 @@ view_menu.add_command(label="Show Graph", command=show_graph)
 view_menu.add_command(label="Show Text Boxes", command=show_text_boxes)
 
 # Start the GUI event loop
-root.mainloop()
+if __name__ == "__main__":
+    root.mainloop()
