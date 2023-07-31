@@ -1,3 +1,5 @@
+import ctypes
+import os
 import textwrap
 import tkinter as tk
 from tkinter import scrolledtext, END, messagebox
@@ -6,9 +8,11 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import threading
 import queue
 import socket
+import csv
+import subprocess
 
 from scapy.layers.dns import DNS, DNSQR
-from scapy.layers.inet import IP
+from scapy.layers.inet import IP, TCP, UDP
 from scapy.layers.l2 import Ether
 from scapy.sendrecv import sniff
 
@@ -16,6 +20,89 @@ from scapy.sendrecv import sniff
 packet_queue = queue.Queue()
 computer_name_queue = queue.Queue()
 
+def run_sfc_scan():
+    try:
+        # Ask for administrator privileges using the UAC prompt
+        ret = ctypes.windll.shell32.ShellExecuteW(None, "runas", "cmd", "/c sfc /scannow", None, 1)
+        if ret > 32:
+            # If the return value is greater than 32, the UAC prompt was successful
+            # In this case, the "sfc /scannow" command is running with elevated privileges.
+            tk.messagebox.showinfo("SFC Scan Started", "The SFC scan is running with administrator privileges.")
+        elif ret == 31:
+            # Return value 31 indicates the user canceled the UAC prompt
+            raise Exception("SFC scan canceled by user.")
+        else:
+            # Return value less than 31 indicates an error with UAC prompt
+            raise Exception("Failed to obtain administrator privileges.")
+
+    except Exception as e:
+        tk.messagebox.showerror("Error", f"An error occurred: {str(e)}")
+def save_to_csv():
+    # Get the user's Downloads folder
+    downloads_folder = os.path.join(os.path.expanduser("~"), "Downloads")
+
+    # Specify the filename and full path for saving the CSV file in the Downloads folder
+    filename = os.path.join(downloads_folder, "captured_packets.csv")
+
+    with open(filename, mode="w", newline="") as csvfile:
+        writer = csv.writer(csvfile)
+        # Write header row
+        writer.writerow(["IP Address", "MAC Address", "Source Port", "Dest Port", "Packet Size", "Computer Name"])
+
+        # Write each packet's information to the CSV file
+        for packet_info, _, _ in computer_name_queue.queue:
+            ip = packet_info.strip().split('  ', 2)[0]
+            mac = packet_info.strip().split('  ', 2)[1]
+            src_port = packet_info.strip().split('  ', 3)[2]
+            dst_port = packet_info.strip().split('  ', 4)[3]
+            packet_size = packet_info.strip().split('  ', 4)[4].split()[-1]
+
+            # Handle empty computer name
+            computer_name = packet_info.strip().split("  ", 4)[4] if "Retrieving..." not in packet_info else "Unknown"
+
+            # Write the row to the CSV file
+            writer.writerow([ip, mac, src_port, dst_port, packet_size, computer_name])
+
+    messagebox.showinfo("CSV Saved", "Captured packets have been saved to 'captured_packets.csv'.")
+def update_text_box(output_text_box, process):
+    def read_output():
+        line = process.stdout.readline()
+        if line:
+            output_text_box.insert(tk.END, line)
+            output_text_box.see(tk.END)
+            # Continue reading output after 10 milliseconds
+            output_text_box.after(10, read_output)
+        else:
+            process.stdout.close()
+            process.wait()
+            # Disable text box to prevent editing when the command is finished
+            output_text_box.config(state=tk.DISABLED)
+
+    # Start reading the output
+    read_output()
+
+
+def run_ipconfig_all():
+    try:
+        # Run the "ipconfig /all" command using subprocess
+        process = subprocess.Popen(["ipconfig", "/all"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                   universal_newlines=True)
+
+        # Create a new window to display the results
+        output_window = tk.Toplevel(root)
+        output_window.title("ipconfig /all Results")
+
+        # Create a text box to display the results
+        output_text_box = scrolledtext.ScrolledText(output_window, wrap=tk.WORD, width=100, height=25,
+                                                   font=("Courier New", 10))  # Monospaced font
+        output_text_box.pack(padx=10, pady=10)
+
+        # Start updating the text box with real-time output
+        update_thread = threading.Thread(target=update_text_box, args=(output_text_box, process))
+        update_thread.start()
+
+    except Exception as e:
+        tk.messagebox.showerror("Error", f"An error occurred: {str(e)}")
 
 def get_computer_name(ip):
     try:
@@ -38,8 +125,18 @@ def process_packet(packet):
     # Calculate the packet size
     packet_size = len(packet)
 
-    # Format packet information for display in the text box (without the computer name)
-    packet_info = f"{ip:<15}  {mac:<18}  Retrieving...  {packet_size:<10}\n"
+    # Extract source and destination ports if available
+    src_port = None
+    dst_port = None
+    if 'TCP' in packet:
+        src_port = packet[TCP].sport
+        dst_port = packet[TCP].dport
+    elif 'UDP' in packet:
+        src_port = packet[UDP].sport
+        dst_port = packet[UDP].dport
+
+    # Format packet information for display in the text box (including ports)
+    packet_info = f"{ip:<15}  {mac:<18}  {src_port:<6}  {dst_port:<6}  Retrieving...  {packet_size:<10}\n"
 
     return packet_info, ip, packet_size
 
@@ -166,22 +263,26 @@ def update_visualization(completion_event):
     # Initially hide the graph canvas
     canvas.get_tk_widget().pack_forget()
 
-    # Display the captured packets in the first text box (MAC, IP, packet size, and computer name)
+    # Display the column labels on top of the text box
+    column_labels = "IP Address        MAC Address          Source Port    Dest Port    Computer Name    Packet Size\n"
     text_box.config(state=tk.NORMAL)  # Enable text box for editing
     text_box.delete(1.0, END)  # Clear previous content
+    text_box.insert(tk.END, column_labels)  # Insert column labels into the text box
 
     for packet_info, ip, packet_size in computer_name_queue.queue:
         # Format the packet information with fixed-width columns
         ip_formatted = f"{ip:<15}"
         mac_formatted = f"{packet_info.strip().split('  ', 2)[1]:<18}"
+        src_port_formatted = f"{packet_info.strip().split('  ', 3)[2]:<6}"
+        dst_port_formatted = f"{packet_info.strip().split('  ', 4)[3]:<6}"
         packet_size_formatted = f"{packet_size:>10}"  # Packet size column
-        computer_name = packet_info.strip().split("  ", 2)[2]
+        computer_name = packet_info.strip().split("  ", 4)[4]
 
         # Split the computer name into multiple lines and join them with newlines
         computer_name_lines = textwrap.fill(computer_name, width=30)
 
         # Concatenate the formatted values and computer name to create a row
-        row = f"{ip_formatted}{mac_formatted}{packet_size_formatted}  {computer_name_lines}\n"  # Packet size separate column
+        row = f"{ip_formatted}{mac_formatted}{src_port_formatted}{dst_port_formatted}{packet_size_formatted}  {computer_name_lines}\n"
 
         text_box.insert(tk.END, row)  # Insert row into the text box
 
@@ -219,6 +320,7 @@ def update_visualization(completion_event):
         except Exception as e:
             print("Error in packet processing:", e)
 
+    display_packet_info()
 def show_graph():
     canvas.get_tk_widget().pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)  # Pack the canvas to fill the frame
     text_box.pack_forget()
@@ -230,7 +332,34 @@ def show_text_boxes():
     raw_text_box.pack(pady=10, side=tk.LEFT)
 
 
+def display_packet_info():
+    # Display the column labels on top of the text box
+    column_labels = "IP Address        MAC Address          Source Port    Dest Port    Packet Size    Computer Name\n"
+    text_box.config(state=tk.NORMAL)  # Enable text box for editing
+    text_box.delete(1.0, END)  # Clear previous content
+    text_box.insert(tk.END, column_labels)  # Insert column labels into the text box
 
+    for packet_info, ip, packet_size in computer_name_queue.queue:
+        # Format the packet information with fixed-width columns
+        ip_formatted = f"{ip:<15}"
+        max_mac_length = max(
+            len(packet_info.strip().split('  ', 2)[1]) for packet_info, _, _ in computer_name_queue.queue)
+        mac_formatted = f"{packet_info.strip().split('  ', 2)[1]:<{max_mac_length}}"
+
+        src_port_formatted = f"{packet_info.strip().split('  ', 3)[2]:<6}"
+        dst_port_formatted = f"{packet_info.strip().split('  ', 4)[3]:<6}"
+        packet_size_formatted = f"{packet_size:>10}"  # Packet size column
+        computer_name = packet_info.strip().split("  ", 4)[4]
+
+        # Split the computer name into multiple lines and join them with newlines
+        computer_name_lines = textwrap.fill(computer_name, width=30)
+
+        # Concatenate the formatted values and computer name to create a row
+        row = f"{ip_formatted}{mac_formatted}{src_port_formatted}{dst_port_formatted}{packet_size_formatted}  {computer_name_lines}\n"
+
+        text_box.insert(tk.END, row)  # Insert row into the text box
+
+    text_box.config(state=tk.DISABLED)  # Disable text box to prevent editing
 
 # Create the main GUI window
 root = tk.Tk()
@@ -249,6 +378,9 @@ duration_entry.pack(pady=5)
 # Create a button to start traffic visualization and packet capture
 traffic_button = tk.Button(frame, text="Visualize Real Traffic", command=visualize_traffic)
 traffic_button.pack(pady=5)
+# Create a "Save to CSV" button
+save_button = tk.Button(frame, text="Save to CSV", command=save_to_csv)
+save_button.pack(pady=5, side=tk.TOP)
 
 # Create a larger text box for displaying packet information (MAC, IP, and server)
 text_box = scrolledtext.ScrolledText(frame, wrap=tk.WORD, width=100, height=25,
@@ -263,11 +395,13 @@ raw_text_box.pack(pady=10, side=tk.LEFT)  # Place the text box on the left side
 menu_bar = tk.Menu(root)
 root.config(menu=menu_bar)
 
-# Create a "View" menu
-view_menu = tk.Menu(menu_bar, tearoff=0)
-menu_bar.add_cascade(label="View", menu=view_menu)
-view_menu.add_command(label="Show Graph", command=show_graph)
-view_menu.add_command(label="Show Text Boxes", command=show_text_boxes)
+# Create a "Tools" menu
+tools_menu = tk.Menu(menu_bar, tearoff=0)
+menu_bar.add_cascade(label="Tools", menu=tools_menu)
+tools_menu.add_command(label="ipconfig /all", command=run_ipconfig_all)
+tools_menu.add_command(label="Show Graph", command=show_graph)
+tools_menu.add_command(label="Show Text Boxes", command=show_text_boxes)
+tools_menu.add_command(label="SFC Scan", command=run_sfc_scan)
 
 # Start the GUI event loop
 if __name__ == "__main__":
