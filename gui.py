@@ -23,7 +23,8 @@ computer_name_queue = queue.Queue()
 def run_sfc_scan():
     try:
         # Ask for administrator privileges using the UAC prompt
-        ret = ctypes.windll.shell32.ShellExecuteW(None, "runas", "cmd", "/c sfc /scannow", None, 1)
+        ret = ctypes.windll.shell32.ShellExecuteW(None, "runas", "cmd", "/k sfc /scannow", None,
+                                                  1)  # Use "/k" instead of "/c"
         if ret > 32:
             # If the return value is greater than 32, the UAC prompt was successful
             # In this case, the "sfc /scannow" command is running with elevated privileges.
@@ -34,7 +35,6 @@ def run_sfc_scan():
         else:
             # Return value less than 31 indicates an error with UAC prompt
             raise Exception("Failed to obtain administrator privileges.")
-
     except Exception as e:
         tk.messagebox.showerror("Error", f"An error occurred: {str(e)}")
 def save_to_csv():
@@ -144,7 +144,7 @@ def process_packet(packet):
 def run_chkdsk_scan():
     try:
         # Ask for administrator privileges using the UAC prompt
-        ret = ctypes.windll.shell32.ShellExecuteW(None, "runas", "cmd", "/c chkdsk", None, 1)
+        ret = ctypes.windll.shell32.ShellExecuteW(None, "runas", "cmd", "/k chkdsk", None, 1)  # Use "/k" instead of "/c"
         if ret > 32:
             # If the return value is greater than 32, the UAC prompt was successful
             # In this case, the "chkdsk" command is running with elevated privileges.
@@ -155,7 +155,6 @@ def run_chkdsk_scan():
         else:
             # Return value less than 31 indicates an error with UAC prompt
             raise Exception("Failed to obtain administrator privileges.")
-
     except Exception as e:
         tk.messagebox.showerror("Error", f"An error occurred: {str(e)}")
 # Updated dns_lookup_thread function
@@ -183,7 +182,7 @@ def dns_lookup_thread():
 def run_dism_restorehealth():
     try:
         # Ask for administrator privileges using the UAC prompt
-        ret = ctypes.windll.shell32.ShellExecuteW(None, "runas", "cmd", "/c dism /online /cleanup-image /restorehealth", None, 1)
+        ret = ctypes.windll.shell32.ShellExecuteW(None, "runas", "cmd", "/k dism /online /cleanup-image /restorehealth", None, 1)  # Use "/k" instead of "/c"
         if ret > 32:
             # If the return value is greater than 32, the UAC prompt was successful
             # In this case, the "dism /online /cleanup-image /restorehealth" command is running with elevated privileges.
@@ -194,7 +193,6 @@ def run_dism_restorehealth():
         else:
             # Return value less than 31 indicates an error with UAC prompt
             raise Exception("Failed to obtain administrator privileges.")
-
     except Exception as e:
         tk.messagebox.showerror("Error", f"An error occurred: {str(e)}")
 
