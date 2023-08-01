@@ -141,7 +141,23 @@ def process_packet(packet):
 
     return packet_info, ip, packet_size
 
+def run_chkdsk_scan():
+    try:
+        # Ask for administrator privileges using the UAC prompt
+        ret = ctypes.windll.shell32.ShellExecuteW(None, "runas", "cmd", "/c chkdsk", None, 1)
+        if ret > 32:
+            # If the return value is greater than 32, the UAC prompt was successful
+            # In this case, the "chkdsk" command is running with elevated privileges.
+            tk.messagebox.showinfo("CHKDSK Scan Started", "The CHKDSK scan is running with administrator privileges.")
+        elif ret == 31:
+            # Return value 31 indicates the user canceled the UAC prompt
+            raise Exception("CHKDSK scan canceled by user.")
+        else:
+            # Return value less than 31 indicates an error with UAC prompt
+            raise Exception("Failed to obtain administrator privileges.")
 
+    except Exception as e:
+        tk.messagebox.showerror("Error", f"An error occurred: {str(e)}")
 # Updated dns_lookup_thread function
 def dns_lookup_thread():
     while True:
@@ -162,6 +178,23 @@ def dns_lookup_thread():
         except Exception as e:
             print("Error in DNS lookup thread:", e)
 
+def run_dism_restorehealth():
+    try:
+        # Ask for administrator privileges using the UAC prompt
+        ret = ctypes.windll.shell32.ShellExecuteW(None, "runas", "cmd", "/c dism /online /cleanup-image /restorehealth", None, 1)
+        if ret > 32:
+            # If the return value is greater than 32, the UAC prompt was successful
+            # In this case, the "dism /online /cleanup-image /restorehealth" command is running with elevated privileges.
+            tk.messagebox.showinfo("DISM RestoreHealth Started", "The DISM RestoreHealth process is running with administrator privileges.")
+        elif ret == 31:
+            # Return value 31 indicates the user canceled the UAC prompt
+            raise Exception("DISM RestoreHealth canceled by user.")
+        else:
+            # Return value less than 31 indicates an error with UAC prompt
+            raise Exception("Failed to obtain administrator privileges.")
+
+    except Exception as e:
+        tk.messagebox.showerror("Error", f"An error occurred: {str(e)}")
 
 
 
@@ -428,6 +461,8 @@ tools_menu.add_command(label="ipconfig /all", command=run_ipconfig_all)
 tools_menu.add_command(label="Show Graph", command=show_graph)
 tools_menu.add_command(label="Show Text Boxes", command=show_text_boxes)
 tools_menu.add_command(label="SFC Scan", command=run_sfc_scan)
+tools_menu.add_command(label="CHKDSK Scan", command=run_chkdsk_scan)
+tools_menu.add_command(label="DISM RestoreHealth", command=run_dism_restorehealth)
 
 # Start the GUI event loop
 if __name__ == "__main__":
