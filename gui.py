@@ -10,6 +10,7 @@ import queue
 import socket
 import csv
 import subprocess
+from tkinter.ttk import Progressbar
 
 from nmap import nmap
 from scapy.layers.dns import DNS, DNSQR
@@ -501,14 +502,14 @@ def hide_packet_decoding_text_box():
 
 #---------------------------------------------------Network Security Scanner----------------------------------------
 def run_network_security_scanner():
-    # Create a function to perform the network security scan in a separate thread
-    def perform_scan(target):
+    # Function to perform the network security scan
+    def perform_scan(target, scan_options):
         try:
             # Create an Nmap scanner object
             nm = nmap.PortScanner()
 
-            # Perform a basic scan on the target
-            nm.scan(hosts=target, arguments="-T4 -F")  # Use aggressive timing and scan only the most common ports
+            # Perform the scan on the target with the specified options
+            nm.scan(hosts=target, arguments=scan_options)
 
             # Store the scan results in a string
             scan_results = "Network Security Scan Results:\n"
@@ -518,7 +519,13 @@ def run_network_security_scanner():
                     scan_results += f"Protocol: {proto}\n"
                     open_ports = nm[host][proto].keys()
                     for port in open_ports:
-                        scan_results += f"Port: {port} - State: {nm[host][proto][port]['state']}\n"
+                        port_info = nm[host][proto][port]
+                        port_state = port_info["state"]
+                        scan_results += f"Port: {port} - State: {port_state}"
+                        if "version" in port_info:
+                            scan_results += f" - Version: {port_info['version']}\n"
+                        else:
+                            scan_results += "\n"
 
             # Show the scan results in a messagebox
             messagebox.showinfo("Network Security Scan Results", scan_results)
@@ -528,13 +535,63 @@ def run_network_security_scanner():
         except Exception as e:
             messagebox.showerror("Error", f"An error occurred: {e}")
 
+        # Destroy the progress dialog when the scan is complete
+        progress_dialog.destroy()
+
     # Prompt the user for input using a pop-up dialog
     target = simpledialog.askstring("Network Security Scan", "Enter the target IP range or hostname:")
+    if target is None:
+        return  # If the user cancels the input, exit the function
 
-    if target is not None:  # User provided a target, start the scan
+    # Prompt the user to choose scan options
+    options_dialog = tk.Toplevel()
+    options_dialog.title("Scan Options")
+    options_label = tk.Label(options_dialog, text="Choose Scan Options:")
+    options_label.pack()
+
+    # Dictionary to store scan option labels and arguments
+    options = {
+        "TCP SYN Scan": "-sS",
+        "UDP Scan": "-sU",
+        "OS Detection": "-O",
+        "Version Detection": "-sV",
+        "Aggressive Scan": "-A",
+        "Ping Scan": "-sn",
+    }
+
+    # Create IntVar variables to store the state of the checkboxes
+    selected_options = []
+    option_vars = {option: tk.IntVar() for option in options}
+
+    # Function to start the scan
+    def start_scan():
+        for option, var in option_vars.items():
+            if var.get() == 1:
+                selected_options.append(option)
+        options_dialog.destroy()
+
+        # Create a new Toplevel dialog for the progress bar
+        global progress_dialog
+        progress_dialog = tk.Toplevel()
+        progress_dialog.title("Scan Progress")
+        progress_label = tk.Label(progress_dialog, text="Scanning...")
+        progress_label.pack()
+        progress = Progressbar(progress_dialog, orient=tk.HORIZONTAL, mode='indeterminate')
+        progress.pack()
+        progress.start()
+
         # Create a thread to run the scan
-        scan_thread = threading.Thread(target=perform_scan, args=(target,))
+        scan_thread = threading.Thread(target=perform_scan, args=(target, " ".join([options[option] for option in selected_options])))
         scan_thread.start()
+
+    # Create checkboxes for each scan option
+    for option, var in option_vars.items():
+        checkbox = tk.Checkbutton(options_dialog, text=option, variable=var)
+        checkbox.pack()
+
+    start_button = tk.Button(options_dialog, text="Start Scan", command=start_scan)
+    start_button.pack()
+
 #--------------------------------------------------------------------------------------------------------------------
 # Create the main GUI window
 root = tk.Tk()
