@@ -2,7 +2,7 @@ import ctypes
 import os
 import textwrap
 import tkinter as tk
-from tkinter import scrolledtext, END, messagebox
+from tkinter import scrolledtext, END, messagebox, simpledialog
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import threading
@@ -11,9 +11,11 @@ import socket
 import csv
 import subprocess
 
+from nmap import nmap
 from scapy.layers.dns import DNS, DNSQR
-from scapy.layers.inet import IP, TCP, UDP
+from scapy.layers.inet import IP, TCP, UDP, ICMP
 from scapy.layers.l2 import Ether
+from scapy.packet import Raw
 from scapy.sendrecv import sniff
 
 # Queue to store captured packets
@@ -83,6 +85,7 @@ def update_text_box(output_text_box, process):
 
 
 def run_ipconfig_all():
+    hide_packet_decoding_text_box()
     try:
         # Run the "ipconfig /all" command using subprocess
         process = subprocess.Popen(["ipconfig", "/all"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -368,11 +371,13 @@ def update_visualization(completion_event):
 
     display_packet_info(raw_packet_info)
 def show_graph():
+    hide_packet_decoding_text_box()
     canvas.get_tk_widget().pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)  # Pack the canvas to fill the frame
     text_box.pack_forget()
     raw_text_box.pack_forget()
 
 def show_text_boxes():
+    hide_packet_decoding_text_box()
     canvas.get_tk_widget().pack_forget()
     text_box.pack(pady=10, side=tk.LEFT)
     raw_text_box.pack(pady=10, side=tk.LEFT)
@@ -417,9 +422,120 @@ def display_packet_info(raw_packet_info):
     raw_text_box.insert(tk.END, raw_packet_info)  # Insert raw packet info at the end of the text box
 
     raw_text_box.config(state=tk.DISABLED)  # Disable text box to prevent editing
+#-----------------------------------------Packet Decoding -----------------------------------------------------
+def packet_decode(packet):
+    try:
+        decoded_payload = None
+
+        # Check if the packet has a payload
+        if 'Raw' in packet:
+            payload = packet.getlayer(Raw)
+            if payload:
+                # Try to decode the payload as ASCII characters
+                try:
+                    decoded_payload = payload.load.decode('ascii', errors='replace')
+                except UnicodeDecodeError:
+                    # If decoding as ASCII fails, display the payload in hexadecimal format
+                    decoded_payload = payload.load.hex()
+
+        return decoded_payload
+    except Exception as e:
+        print("Error in packet decoding:", e)
+        return None
+
+def packet_capture_thread(completion_event, duration):
+    global decoded_payloads_list  # Declare decoded_payloads_list as a global variable
+
+    # Initialize the list to store the decoded payloads
+    decoded_payloads_list = []
+
+    # Capture packets for the specified duration (in seconds)
+    captured_packets = sniff(timeout=duration)
+    for packet in captured_packets:
+        packet_queue.put(packet)
+
+        # Decode the payload and add it to the list
+        payload = packet_decode(packet)
+        if payload:
+            decoded_payloads_list.append(payload)
+
+    # Signal completion of packet capture
+    completion_event.set()
+
+def show_packet_decoding():
+    # Hide the bar chart and both text boxes
+    canvas.get_tk_widget().pack_forget()
+    text_box.pack_forget()
+    raw_text_box.pack_forget()
+
+    # Display the decoded packet payload in a new text box
+    decoded_text_box.pack(pady=10, side=tk.LEFT)
+
+    # Process and display the decoded packet payloads from the list
+    decoded_payloads = "\n\n".join(decoded_payloads_list)  # Add a separator between payloads
+
+    if decoded_payloads:
+        decoded_text_box.config(state=tk.NORMAL)  # Enable text box for editing
+        decoded_text_box.delete(1.0, END)  # Clear previous content
+        decoded_text_box.insert(tk.END, decoded_payloads)  # Insert decoded payloads into the text box
+        decoded_text_box.config(state=tk.DISABLED)  # Disable text box to prevent editing
+
+    # Show the "Back" button to return to the original view
+    #back_button.pack(pady=5, side=tk.TOP)
+
+    print("Packet Decoding Complete")  # Debugging statement
 
 
+def hide_packet_decoding():
+    # Hide the decoded_text_box and display the original text boxes
+    decoded_text_box.pack_forget()
+    text_box.pack(pady=10, side=tk.LEFT)
+    raw_text_box.pack(pady=10, side=tk.LEFT)
 
+def hide_packet_decoding_text_box():
+    decoded_text_box.pack_forget()
+
+
+#-------------------------------------------------------------GUI----------------------------------------------------
+
+
+#---------------------------------------------------Network Security Scanner----------------------------------------
+def run_network_security_scanner():
+    # Create a function to perform the network security scan in a separate thread
+    def perform_scan(target):
+        try:
+            # Create an Nmap scanner object
+            nm = nmap.PortScanner()
+
+            # Perform a basic scan on the target
+            nm.scan(hosts=target, arguments="-T4 -F")  # Use aggressive timing and scan only the most common ports
+
+            # Store the scan results in a string
+            scan_results = "Network Security Scan Results:\n"
+            for host in nm.all_hosts():
+                scan_results += f"Host: {host} ({nm[host].hostname()})\n"
+                for proto in nm[host].all_protocols():
+                    scan_results += f"Protocol: {proto}\n"
+                    open_ports = nm[host][proto].keys()
+                    for port in open_ports:
+                        scan_results += f"Port: {port} - State: {nm[host][proto][port]['state']}\n"
+
+            # Show the scan results in a messagebox
+            messagebox.showinfo("Network Security Scan Results", scan_results)
+
+        except nmap.PortScannerError as e:
+            messagebox.showerror("Error", f"Error: {e}")
+        except Exception as e:
+            messagebox.showerror("Error", f"An error occurred: {e}")
+
+    # Prompt the user for input using a pop-up dialog
+    target = simpledialog.askstring("Network Security Scan", "Enter the target IP range or hostname:")
+
+    if target is not None:  # User provided a target, start the scan
+        # Create a thread to run the scan
+        scan_thread = threading.Thread(target=perform_scan, args=(target,))
+        scan_thread.start()
+#--------------------------------------------------------------------------------------------------------------------
 # Create the main GUI window
 root = tk.Tk()
 root.title("Real Traffic Visualization and Packet Capture")
@@ -440,6 +556,9 @@ traffic_button.pack(pady=5)
 # Create a "Save to CSV" button
 save_button = tk.Button(frame, text="Save to CSV", command=save_to_csv)
 save_button.pack(pady=5, side=tk.TOP)
+#back button
+#back_button = tk.Button(frame, text="Back", command=hide_packet_decoding)
+#back_button.pack(pady=5, side=tk.TOP)
 
 # Create a larger text box for displaying packet information (MAC, IP, and server)
 text_box = scrolledtext.ScrolledText(frame, wrap=tk.WORD, width=100, height=25,
@@ -454,6 +573,12 @@ raw_text_box.pack(pady=10, side=tk.LEFT)  # Place the text box on the left side
 menu_bar = tk.Menu(root)
 root.config(menu=menu_bar)
 
+# Create a text box for displaying the decoded packet payload
+decoded_text_box = scrolledtext.ScrolledText(frame, wrap=tk.WORD, width=100, height=25,
+                                            font=("Courier New", 10))
+decoded_text_box.config(state=tk.DISABLED)  # Disable text box to prevent editing
+
+
 # Create a "Tools" menu
 tools_menu = tk.Menu(menu_bar, tearoff=0)
 menu_bar.add_cascade(label="Tools", menu=tools_menu)
@@ -463,7 +588,11 @@ tools_menu.add_command(label="Show Text Boxes", command=show_text_boxes)
 tools_menu.add_command(label="SFC Scan", command=run_sfc_scan)
 tools_menu.add_command(label="CHKDSK Scan", command=run_chkdsk_scan)
 tools_menu.add_command(label="DISM RestoreHealth", command=run_dism_restorehealth)
+tools_menu.add_command(label="Packet Decoding", command=show_packet_decoding)
+tools_menu.add_command(label="Network Security Scanner", command=run_network_security_scanner)
 
+# Hide the decoded_text_box by default
+decoded_text_box.pack_forget()
 # Start the GUI event loop
 if __name__ == "__main__":
     root.mainloop()
