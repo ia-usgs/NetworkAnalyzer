@@ -33,10 +33,10 @@ python real_traffic_visualization.py
 
 The GUI window will appear, and you can interact with the following options:
 
-Enter the Scan Duration in seconds and click the Visualize Real Traffic button to start the packet capture and visualization.
+Enter the **Scan Duration** in seconds and click the **Visualize Real Traffic** button to start the packet capture and visualization.
 The captured packet information will be displayed in the left text box, and raw packet data will be displayed in the right text box.
-Use the Save to CSV button to save the captured packet information to a CSV file named captured_packets.csv in the Downloads folder.
-Use the Tools menu to access additional features like ipconfig /all, Show Graph, Show Text Boxes, SFC Scan, CHKDSK Scan, and DISM RestoreHealth.
+Use the **Save to CSV** button to save the captured packet information to a CSV file named **captured_packets.csv** in the Downloads folder.
+Use the Tools menu to access additional features like **ipconfig /all, Show Graph, Show Text Boxes, SFC Scan, CHKDSK Scan, and DISM RestoreHealth.**
 Please note that certain features (e.g., SFC Scan, CHKDSK Scan, DISM RestoreHealth) may require administrator privileges, and the script will prompt for UAC elevation when necessary.
 
 ### Disclaimer
