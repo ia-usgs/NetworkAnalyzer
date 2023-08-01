@@ -14,7 +14,7 @@ Features
 
 ### Requirements
 Python 3.x
-** tkinter, scapy, matplotlib ** libraries
+**tkinter, scapy, matplotlib** libraries
 
 ### Usage
 Install the required libraries using the following command:
