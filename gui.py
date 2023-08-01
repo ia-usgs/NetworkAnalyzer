@@ -170,13 +170,15 @@ def dns_lookup_thread():
             else:
                 computer_name = get_computer_name(ip)
 
-            packet_info = packet_info.replace("Retrieving...", computer_name)
+            # Replace "Retrieving..." with the computer name or "Unknown" if it's None
+            packet_info = packet_info.replace("Retrieving...", computer_name or "Unknown")
 
             text_box.config(state=tk.NORMAL)  # Enable text box for editing
             text_box.insert(tk.END, packet_info)  # Insert packet info at the end of the text box
             text_box.config(state=tk.DISABLED)  # Disable text box to prevent editing
         except Exception as e:
             print("Error in DNS lookup thread:", e)
+
 
 def run_dism_restorehealth():
     try:
