@@ -1,4 +1,4 @@
-#Real Traffic Visualization and Packet Capture
+# Real Traffic Visualization and Packet Capture
 
 This repository contains a Python script that provides a graphical user interface (GUI) for visualizing real network traffic and capturing packets. 
 The script uses the tkinter library for GUI, scapy for packet sniffing and processing, and matplotlib for visualizing traffic data.
