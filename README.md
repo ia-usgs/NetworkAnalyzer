@@ -4,13 +4,13 @@ This repository contains a Python script that provides a graphical user interfac
 The script uses the tkinter library for GUI, scapy for packet sniffing and processing, and matplotlib for visualizing traffic data.
 
 Features
-* ** Real Traffic Visualization: ** Capture and visualize real network traffic for a specified duration.
-* ** Packet Capture: ** Capture and display detailed packet information including IP address, MAC address, source port, destination port, packet size, and computer name (if available).
-* ** Save to CSV: ** Save the captured packets to a CSV file for further analysis.
-* ** IP Configuration (ipconfig /all): ** View network adapter configuration details using the ipconfig /all command.
-* ** System File Checker Scan (sfc /scannow): ** Run the system file checker (SFC) scan with administrator privileges to check and repair corrupted system files.
-* ** Check Disk Scan (chkdsk): ** Run the Check Disk (CHKDSK) scan with administrator privileges to check and repair disk errors.
-* ** Deployment Image Servicing and Management (DISM) RestoreHealth: ** Run the DISM RestoreHealth command with administrator privileges to repair the Windows image.
+* **Real Traffic Visualization:** Capture and visualize real network traffic for a specified duration.
+* **Packet Capture:** Capture and display detailed packet information including IP address, MAC address, source port, destination port, packet size, and computer name (if available).
+* **Save to CSV:** Save the captured packets to a CSV file for further analysis.
+* **IP Configuration (ipconfig /all):** View network adapter configuration details using the ipconfig /all command.
+* **System File Checker Scan (sfc /scannow):** Run the system file checker (SFC) scan with administrator privileges to check and repair corrupted system files.
+* **Check Disk Scan (chkdsk):** Run the Check Disk (CHKDSK) scan with administrator privileges to check and repair disk errors.
+* **Deployment Image Servicing and Management (DISM) RestoreHealth:** Run the DISM RestoreHealth command with administrator privileges to repair the Windows image.
 
 ### Requirements
 Python 3.x
