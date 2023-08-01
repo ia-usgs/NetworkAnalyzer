@@ -147,16 +147,21 @@ def dns_lookup_thread():
     while True:
         try:
             packet_info, ip, packet_size = computer_name_queue.get()  # Unpack all three values
-            computer_name = get_computer_name(ip)
-            if computer_name:
-                packet_info = packet_info.replace("Retrieving...", computer_name)
+
+            # If the IP address is None, set the computer name as "Unknown" and skip the DNS lookup
+            if ip is None:
+                computer_name = "Unknown"
             else:
-                packet_info = packet_info.replace("Retrieving...", "Unknown")
+                computer_name = get_computer_name(ip)
+
+            packet_info = packet_info.replace("Retrieving...", computer_name)
+
             text_box.config(state=tk.NORMAL)  # Enable text box for editing
             text_box.insert(tk.END, packet_info)  # Insert packet info at the end of the text box
             text_box.config(state=tk.DISABLED)  # Disable text box to prevent editing
         except Exception as e:
             print("Error in DNS lookup thread:", e)
+
 
 
 
@@ -271,9 +276,16 @@ def update_visualization(completion_event):
     text_box.insert(tk.END, column_labels)  # Insert column labels into the text box
 
     for packet_info, ip, packet_size in computer_name_queue.queue:
+        # If the IP address is None, skip formatting and continue to the next packet_info
+        if ip is None:
+            continue
+
         # Format the packet information with fixed-width columns
         ip_formatted = f"{ip:<15}"
-        mac_formatted = f"{packet_info.strip().split('  ', 2)[1]:<18}"
+        max_mac_length = max(
+            len(packet_info.strip().split('  ', 2)[1]) for packet_info, _, _ in computer_name_queue.queue)
+        mac_formatted = f"{packet_info.strip().split('  ', 2)[1]:<{max_mac_length}}"
+
         src_port_formatted = f"{packet_info.strip().split('  ', 3)[2]:<6}"
         dst_port_formatted = f"{packet_info.strip().split('  ', 4)[3]:<6}"
         packet_size_formatted = f"{packet_size:>10}"  # Packet size column
@@ -321,7 +333,7 @@ def update_visualization(completion_event):
         except Exception as e:
             print("Error in packet processing:", e)
 
-    display_packet_info()
+    display_packet_info(raw_packet_info)
 def show_graph():
     canvas.get_tk_widget().pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)  # Pack the canvas to fill the frame
     text_box.pack_forget()
@@ -333,7 +345,7 @@ def show_text_boxes():
     raw_text_box.pack(pady=10, side=tk.LEFT)
 
 
-def display_packet_info():
+def display_packet_info(raw_packet_info):
     # Display the column labels on top of the text box
     column_labels = "IP Address        MAC Address          Source Port    Dest Port    Packet Size    Computer Name\n"
     text_box.config(state=tk.NORMAL)  # Enable text box for editing
@@ -341,10 +353,13 @@ def display_packet_info():
     text_box.insert(tk.END, column_labels)  # Insert column labels into the text box
 
     for packet_info, ip, packet_size in computer_name_queue.queue:
+        # If the IP address is None, skip formatting and continue to the next packet_info
+        if ip is None:
+            continue
+
         # Format the packet information with fixed-width columns
         ip_formatted = f"{ip:<15}"
-        max_mac_length = max(
-            len(packet_info.strip().split('  ', 2)[1]) for packet_info, _, _ in computer_name_queue.queue)
+        max_mac_length = max(len(packet_info.strip().split('  ', 2)[1]) for packet_info, _, _ in computer_name_queue.queue)
         mac_formatted = f"{packet_info.strip().split('  ', 2)[1]:<{max_mac_length}}"
 
         src_port_formatted = f"{packet_info.strip().split('  ', 3)[2]:<6}"
@@ -361,6 +376,16 @@ def display_packet_info():
         text_box.insert(tk.END, row)  # Insert row into the text box
 
     text_box.config(state=tk.DISABLED)  # Disable text box to prevent editing
+
+    # Display the captured packets in the second text box (raw packet data)
+    raw_text_box.config(state=tk.NORMAL)  # Enable text box for editing
+    raw_text_box.delete(1.0, END)  # Clear previous content
+
+    raw_text_box.insert(tk.END, raw_packet_info)  # Insert raw packet info at the end of the text box
+
+    raw_text_box.config(state=tk.DISABLED)  # Disable text box to prevent editing
+
+
 
 # Create the main GUI window
 root = tk.Tk()
