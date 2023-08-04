@@ -161,7 +161,7 @@ def run_chkdsk_scan():
             raise Exception("Failed to obtain administrator privileges.")
     except Exception as e:
         tk.messagebox.showerror("Error", f"An error occurred: {str(e)}")
-# Updated dns_lookup_thread function
+
 def dns_lookup_thread():
     while True:
         try:
